@@ -13,10 +13,10 @@
 | Speech-to-Text | Web Speech API (MVP) → AWS Transcribe (prod) | Zero-cost MVP, upgrade path to production quality |
 | Text-to-Speech | Browser SpeechSynthesis (MVP) → Amazon Polly (prod) | Same upgrade path |
 | State management | Zustand (client) | Lightweight, no boilerplate |
-| Database | SQLite via Drizzle ORM (MVP) → PostgreSQL (prod) | Zero-config local dev, easy migration |
+| Database | SQLite via better-sqlite3 (WAL mode) | Zero-config, synchronous, fast. Chat history at `.kiro/chat-history.db` |
 | Agent storage | Filesystem (`.kiro/agents/`) | Native Kiro format, no translation layer |
 | Process management | Node.js `child_process` | Spawn `kiro-cli acp` per session |
-| WebSocket | Socket.io | Real-time streaming from ACP to browser |
+| Real-time streaming | Server-Sent Events (SSE) | Simpler than WebSocket for unidirectional streaming |
 | Auth | NextAuth.js v5 | Session management, extensible providers |
 | Validation | Zod | Runtime type validation for agent configs and API payloads |
 

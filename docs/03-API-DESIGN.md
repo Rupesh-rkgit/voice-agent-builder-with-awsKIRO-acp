@@ -95,19 +95,38 @@
 }
 
 // Response: ReadableStream (Server-Sent Events)
-// event: message
 // data: { type: "text", content: "..." }
-//
-// event: tool_call
 // data: { type: "tool_call", name: "read", status: "running" }
-//
-// event: turn_end
+// data: { type: "delegation", agent: "agent-name", task: "...", status: "start" }
+// data: { type: "text", content: "sub-agent chunk..." }
+// data: { type: "delegation", agent: "agent-name", task: "...", status: "end" }
 // data: { type: "turn_end" }
+//
+// Auto-saves: user message, assistant response, delegation, sub-agent response
+// Title set from first user message (only if empty)
 ```
 
-#### `DELETE /api/chat/session/:id` — End Session
+#### `GET /api/chat/history` — Chat History
 ```typescript
-// Response 204 (kills the kiro-cli acp process)
+// Query params (one of):
+//   ?sessionId=uuid  → get messages for session
+//   ?agentId=uuid    → list sessions for agent
+//   (none)           → recent chats across all agents
+
+// Response (sessions)
+{ sessions: [{ id, agentId, agentName, title, createdAt, updatedAt }] }
+
+// Response (messages)
+{ messages: [{ id, sessionId, role, content, agentName, createdAt }] }
+```
+
+#### `DELETE /api/chat/history` — Delete Chat Session
+```typescript
+// Request
+{ sessionId: string }
+
+// Response 200
+{ ok: true }
 ```
 
 ---
