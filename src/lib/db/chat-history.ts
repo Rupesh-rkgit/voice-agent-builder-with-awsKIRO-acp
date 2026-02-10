@@ -42,6 +42,40 @@ function getDb(): Database.Database {
   return _db;
 }
 
+/** Close the database connection (called on shutdown). */
+export function closeDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
+}
+
+// Close DB on process exit
+process.on("SIGTERM", closeDb);
+process.on("SIGINT", closeDb);
+
+// --- DB Row Types (match SQLite column names) ---
+
+interface SessionRow {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message: string | null;
+}
+
+interface MessageRow {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  agent_name: string | null;
+  created_at: string;
+}
+
 // --- Sessions ---
 
 export interface ChatSession {
@@ -75,19 +109,19 @@ export function listChatSessions(agentId?: string, limit = 50): ChatSession[] {
        FROM chat_sessions s LEFT JOIN chat_messages m ON m.session_id = s.id
        GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?`;
 
-  const rows = agentId
+  const rows = (agentId
     ? db.prepare(query).all(agentId, limit)
-    : db.prepare(query).all(limit);
+    : db.prepare(query).all(limit)) as SessionRow[];
 
-  return (rows as Array<Record<string, unknown>>).map((r) => ({
-    id: r.id as string,
-    agentId: r.agent_id as string,
-    agentName: r.agent_name as string,
-    title: r.title as string,
-    createdAt: r.created_at as string,
-    updatedAt: r.updated_at as string,
-    messageCount: r.message_count as number,
-    lastMessage: r.last_message as string | undefined,
+  return rows.map((r) => ({
+    id: r.id,
+    agentId: r.agent_id,
+    agentName: r.agent_name,
+    title: r.title,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    messageCount: r.message_count,
+    lastMessage: r.last_message ?? undefined,
   }));
 }
 
@@ -135,15 +169,15 @@ export function saveMessage(
 export function getSessionMessages(sessionId: string): ChatMessageRecord[] {
   const rows = getDb().prepare(
     "SELECT * FROM chat_messages WHERE session_id = ? ORDER BY id ASC"
-  ).all(sessionId);
+  ).all(sessionId) as MessageRow[];
 
-  return (rows as Array<Record<string, unknown>>).map((r) => ({
-    id: r.id as number,
-    sessionId: r.session_id as string,
-    role: r.role as string,
-    content: r.content as string,
-    agentName: r.agent_name as string | null,
-    createdAt: r.created_at as string,
+  return rows.map((r) => ({
+    id: r.id,
+    sessionId: r.session_id,
+    role: r.role,
+    content: r.content,
+    agentName: r.agent_name,
+    createdAt: r.created_at,
   }));
 }
 

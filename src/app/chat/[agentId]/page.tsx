@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useVoice } from "@/hooks/use-voice";
 import { useSearchParams } from "next/navigation";
+import type { ChatSession } from "@/lib/db/chat-history";
 
 interface ChatMessage {
   id: string;
@@ -13,7 +14,6 @@ interface ChatMessage {
 }
 
 interface ChildAgent { id: string; name: string; description: string; }
-interface HistorySession { id: string; agentId: string; agentName: string; title: string; updatedAt: string; messageCount?: number; }
 
 export default function ChatPage({ params }: { params: Promise<{ agentId: string }> }) {
   const [agentId, setAgentId] = useState("");
@@ -44,11 +44,12 @@ export default function ChatPage({ params }: { params: Promise<{ agentId: string
       setSessionId(data.sessionId);
       setIsResumed(false);
       return data.sessionId;
-    } catch {
+    } catch (e) {
+      console.error("[chat] Failed to recreate session:", e);
       return null;
     }
   }
-  const [history, setHistory] = useState<HistorySession[]>([]);
+  const [history, setHistory] = useState<ChatSession[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { isListening, transcript, startListening, stopListening, supported } = useVoice();
   const searchParams = useSearchParams();
@@ -72,7 +73,9 @@ export default function ChatPage({ params }: { params: Promise<{ agentId: string
       const res = await fetch(`/api/chat/history?agentId=${aid}`);
       const data = await res.json();
       setHistory(data.sessions || []);
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error("[chat] Failed to load history:", e);
+    }
   }, []);
 
   // Load previous messages if resuming
@@ -88,7 +91,9 @@ export default function ChatPage({ params }: { params: Promise<{ agentId: string
           agentName: m.agentName || m.agent_name || undefined,
         })));
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error("[chat] Failed to load previous messages:", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -196,6 +201,44 @@ export default function ChatPage({ params }: { params: Promise<{ agentId: string
       const decoder = new TextDecoder();
       let buffer = "";
 
+      function processSSELine(line: string) {
+        if (!line.startsWith("data: ")) return;
+        try {
+          const data = JSON.parse(line.slice(6));
+
+          if (data.type === "text") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === currentMsgId ? { ...m, content: m.content + data.content } : m
+              )
+            );
+          } else if (data.type === "tool_call") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === currentMsgId
+                  ? { ...m, toolCalls: [...(m.toolCalls || []), { name: data.name, status: data.status }] }
+                  : m
+              )
+            );
+          } else if (data.type === "delegation" && data.status === "start") {
+            setActiveChild(data.agent);
+            const delegationId = `d-${Date.now()}`;
+            setMessages((prev) => [...prev, {
+              id: delegationId, role: "delegation", content: data.task, agentName: data.agent,
+            }]);
+            const subMsgId = `sub-${Date.now()}`;
+            setMessages((prev) => [...prev, {
+              id: subMsgId, role: "assistant", content: "", agentName: data.agent, toolCalls: [],
+            }]);
+            currentMsgId = subMsgId;
+          } else if (data.type === "delegation" && data.status === "end") {
+            setActiveChild(null);
+          }
+        } catch (e) {
+          console.warn("[chat] Failed to parse SSE chunk:", (e as Error).message);
+        }
+      }
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -205,40 +248,13 @@ export default function ChatPage({ params }: { params: Promise<{ agentId: string
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-
-            if (data.type === "text") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === currentMsgId ? { ...m, content: m.content + data.content } : m
-                )
-              );
-            } else if (data.type === "tool_call") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === currentMsgId
-                    ? { ...m, toolCalls: [...(m.toolCalls || []), { name: data.name, status: data.status }] }
-                    : m
-                )
-              );
-            } else if (data.type === "delegation" && data.status === "start") {
-              setActiveChild(data.agent);
-              const delegationId = `d-${Date.now()}`;
-              setMessages((prev) => [...prev, {
-                id: delegationId, role: "delegation", content: data.task, agentName: data.agent,
-              }]);
-              const subMsgId = `sub-${Date.now()}`;
-              setMessages((prev) => [...prev, {
-                id: subMsgId, role: "assistant", content: "", agentName: data.agent, toolCalls: [],
-              }]);
-              currentMsgId = subMsgId;
-            } else if (data.type === "delegation" && data.status === "end") {
-              setActiveChild(null);
-            }
-          } catch { /* skip */ }
+          processSSELine(line);
         }
+      }
+
+      // Flush any remaining data in the buffer after stream ends
+      if (buffer.trim()) {
+        processSSELine(buffer.trim());
       }
     } catch {
       setMessages((prev) =>

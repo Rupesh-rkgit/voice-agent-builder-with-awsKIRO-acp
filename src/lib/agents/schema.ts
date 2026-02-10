@@ -43,7 +43,7 @@ export type UpdateAgentRequest = z.infer<typeof UpdateAgentRequestSchema>;
 
 export const ChatPromptRequestSchema = z.object({
   sessionId: z.string().min(1),
-  message: z.string().min(1),
+  message: z.string().min(1).max(50000),
 });
 export type ChatPromptRequest = z.infer<typeof ChatPromptRequestSchema>;
 

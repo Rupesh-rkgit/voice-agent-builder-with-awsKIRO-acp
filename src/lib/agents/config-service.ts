@@ -13,13 +13,37 @@ const WORKSPACE_DIR =
 const AGENTS_DIR = path.join(WORKSPACE_DIR, ".kiro", "agents");
 const INDEX_FILE = path.join(AGENTS_DIR, ".agent-index.json");
 
+// Simple mutex for index file writes to prevent race conditions
+let indexLock: Promise<void> = Promise.resolve();
+function withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = indexLock;
+  let release: () => void;
+  indexLock = new Promise<void>((r) => { release = r; });
+  return prev.then(fn).finally(() => release!());
+}
+
+/**
+ * Validate that a resolved path stays within AGENTS_DIR.
+ */
+function safePath(name: string): string {
+  const resolved = path.resolve(AGENTS_DIR, `${name}.json`);
+  if (!resolved.startsWith(path.resolve(AGENTS_DIR) + path.sep)) {
+    throw new Error("Invalid agent name: path traversal detected");
+  }
+  return resolved;
+}
+
 // --- Index persistence (maps UUID → agent metadata) ---
 
 async function readIndex(): Promise<Record<string, AgentMeta>> {
   try {
     const raw = await fs.readFile(INDEX_FILE, "utf-8");
     return JSON.parse(raw);
-  } catch {
+  } catch (e) {
+    // ENOENT is expected on first run; anything else is worth logging
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("[config-service] Failed to read agent index:", (e as Error).message);
+    }
     return {};
   }
 }
@@ -46,13 +70,12 @@ export async function getAgent(
   if (!meta) return null;
 
   try {
-    const raw = await fs.readFile(
-      path.join(AGENTS_DIR, `${meta.name}.json`),
-      "utf-8"
-    );
+    const configPath = safePath(meta.name);
+    const raw = await fs.readFile(configPath, "utf-8");
     const config = KiroAgentConfigSchema.parse(JSON.parse(raw));
     return { meta, config };
-  } catch {
+  } catch (e) {
+    console.error(`[config-service] Failed to read agent ${meta.name}:`, (e as Error).message);
     return null;
   }
 }
@@ -63,7 +86,7 @@ export async function createAgent(
   await fs.mkdir(AGENTS_DIR, { recursive: true });
 
   const config = KiroAgentConfigSchema.parse(req);
-  const configPath = path.join(AGENTS_DIR, `${config.name}.json`);
+  const configPath = safePath(config.name);
 
   // Check for name collision
   try {
@@ -77,23 +100,24 @@ export async function createAgent(
   // Write the Kiro agent config JSON
   await fs.writeFile(configPath, JSON.stringify(config, null, 2));
 
-  // Update index
-  const index = await readIndex();
-  const id = uuidv4();
-  const now = new Date().toISOString();
-  const meta: AgentMeta = {
-    id,
-    name: config.name,
-    description: config.description,
-    configPath: `.kiro/agents/${config.name}.json`,
-    parentAgentId: req.parentAgentId ?? null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  index[id] = meta;
-  await writeIndex(index);
-
-  return meta;
+  // Update index (with lock to prevent race conditions)
+  return withIndexLock(async () => {
+    const index = await readIndex();
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    const meta: AgentMeta = {
+      id,
+      name: config.name,
+      description: config.description,
+      configPath: `.kiro/agents/${config.name}.json`,
+      parentAgentId: req.parentAgentId ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    index[id] = meta;
+    await writeIndex(index);
+    return meta;
+  });
 }
 
 export async function updateAgent(
@@ -108,40 +132,43 @@ export async function updateAgent(
     ...updates,
   });
 
-  const configPath = path.join(AGENTS_DIR, `${merged.name}.json`);
+  const configPath = safePath(merged.name);
 
   // If name changed, remove old file
   if (merged.name !== existing.meta.name) {
-    const oldPath = path.join(AGENTS_DIR, `${existing.meta.name}.json`);
+    const oldPath = safePath(existing.meta.name);
     await fs.unlink(oldPath).catch(() => {});
   }
 
   await fs.writeFile(configPath, JSON.stringify(merged, null, 2));
 
-  const index = await readIndex();
-  index[id] = {
-    ...index[id],
-    name: merged.name,
-    description: merged.description,
-    configPath: `.kiro/agents/${merged.name}.json`,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeIndex(index);
-
-  return index[id];
+  return withIndexLock(async () => {
+    const index = await readIndex();
+    index[id] = {
+      ...index[id],
+      name: merged.name,
+      description: merged.description,
+      configPath: `.kiro/agents/${merged.name}.json`,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeIndex(index);
+    return index[id];
+  });
 }
 
 export async function deleteAgent(id: string): Promise<boolean> {
-  const index = await readIndex();
-  const meta = index[id];
-  if (!meta) return false;
+  return withIndexLock(async () => {
+    const index = await readIndex();
+    const meta = index[id];
+    if (!meta) return false;
 
-  const configPath = path.join(AGENTS_DIR, `${meta.name}.json`);
-  await fs.unlink(configPath).catch(() => {});
+    const configPath = safePath(meta.name);
+    await fs.unlink(configPath).catch(() => {});
 
-  delete index[id];
-  await writeIndex(index);
-  return true;
+    delete index[id];
+    await writeIndex(index);
+    return true;
+  });
 }
 
 export async function getChildAgents(parentId: string): Promise<AgentMeta[]> {

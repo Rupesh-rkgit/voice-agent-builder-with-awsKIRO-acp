@@ -103,7 +103,9 @@ export default function ConversationBuilder() {
               fullText += parsed.text;
               appendStreamingText(parsed.text);
             }
-          } catch { /* skip malformed */ }
+          } catch (e) {
+            console.warn("[builder] Failed to parse SSE chunk:", (e as Error).message);
+          }
         }
       }
 

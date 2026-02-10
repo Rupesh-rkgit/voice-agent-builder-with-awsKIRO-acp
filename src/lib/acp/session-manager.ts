@@ -95,6 +95,8 @@ class AcpSessionManager {
       }
     }
     if (oldest) {
+      console.warn(`[session-manager] Evicting session ${oldest.sessionId} (agent: ${oldest.agentName})`);
+      oldest.client.removeAllListeners();
       oldest.client.disconnect();
       this.sessions.delete(oldest.sessionId);
     }
@@ -103,3 +105,11 @@ class AcpSessionManager {
 
 // Singleton — survives across API route invocations in dev/prod
 export const sessionManager = new AcpSessionManager();
+
+// Graceful shutdown — kill all kiro-cli child processes on exit
+function shutdown() {
+  console.log("[session-manager] Shutting down, destroying all sessions...");
+  sessionManager.destroyAll().catch(() => {});
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

@@ -4,6 +4,8 @@ import { ChatPromptRequestSchema } from "@/lib/agents/schema";
 import type { SessionUpdate } from "@/lib/acp/client";
 import { saveMessage, updateSessionTitle } from "@/lib/db/chat-history";
 
+const MAX_DELEGATION_DEPTH = 3;
+
 /**
  * Detects <delegate to="agent-name">task</delegate> in accumulated text.
  * Returns null if no complete tag found yet.
@@ -44,16 +46,31 @@ export async function POST(req: NextRequest) {
         let fullText = "";
         let pendingDelegation: { agent: string; task: string } | null = null;
 
+        // Abort when client disconnects
+        const signal = req.signal;
+        signal.addEventListener("abort", () => {
+          if (!closed) {
+            closed = true;
+            client.removeAllListeners("update");
+            client.cancel(sessionId).catch(() => {});
+            try { controller.close(); } catch { /* already closed */ }
+          }
+        });
+
         function send(event: SessionUpdate) {
           if (closed) return;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          } catch {
+            closed = true;
+          }
         }
 
         function close() {
           if (closed) return;
           closed = true;
           send({ type: "turn_end" });
-          controller.close();
+          try { controller.close(); } catch { /* already closed */ }
         }
 
         let sentLength = 0; // Track how much of fullText we've already sent to UI
@@ -99,7 +116,12 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        async function handleDelegation(agentName: string, task: string) {
+        async function handleDelegation(agentName: string, task: string, depth = 0) {
+          if (depth >= MAX_DELEGATION_DEPTH) {
+            send({ type: "error", message: `Maximum delegation depth (${MAX_DELEGATION_DEPTH}) exceeded` });
+            close();
+            return;
+          }
           try {
             saveMessage(sessionId, "delegation", task, agentName);
             send({ type: "delegation", agent: agentName, task, status: "start" });
@@ -132,7 +154,9 @@ export async function POST(req: NextRequest) {
           } catch (err) {
             console.error(`[delegation] error:`, err);
             send({ type: "error", message: (err as Error).message });
-            try { await client.switchAgent(sessionId, orchestratorName); } catch { /* best effort */ }
+            try { await client.switchAgent(sessionId, orchestratorName); } catch (switchErr) {
+              console.error("[delegation] Failed to switch back to orchestrator:", (switchErr as Error).message);
+            }
             close();
           }
         }

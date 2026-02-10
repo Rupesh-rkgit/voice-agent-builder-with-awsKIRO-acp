@@ -71,27 +71,3 @@ export function parseVoiceToAgentConfig(transcript: string): KiroAgentConfig {
     model: "claude-sonnet-4",
   });
 }
-
-/**
- * Enhanced parser that uses an LLM (via ACP) to generate the config.
- * Call this when you have an active ACP session available.
- */
-export function buildConfigPrompt(transcript: string): string {
-  return `Parse the following voice command into a Kiro agent JSON configuration.
-
-Voice command: "${transcript}"
-
-Return ONLY valid JSON matching this schema:
-{
-  "name": "lowercase-hyphenated-name",
-  "description": "Brief description",
-  "prompt": "System prompt for the agent",
-  "tools": ["read", "write", ...],
-  "model": "claude-sonnet-4"
-}
-
-Available tools: ${KNOWN_TOOLS.join(", ")}
-Available MCP server prefixes: @git, @fetch
-
-Respond with ONLY the JSON, no markdown fences or explanation.`;
-}

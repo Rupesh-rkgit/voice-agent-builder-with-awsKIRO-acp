@@ -17,6 +17,8 @@ import fs from "fs";
 import path from "path";
 
 const KIRO_CLI_PATH = process.env.KIRO_CLI_PATH || "kiro-cli";
+const WORKSPACE_DIR = process.env.KIRO_WORKSPACE_DIR || process.cwd();
+const DEFAULT_TIMEOUT_MS = 120_000; // 2 minutes
 
 export interface AcpClientOptions {
   cwd: string;
@@ -105,12 +107,20 @@ export class AcpClient extends EventEmitter {
     this.rejectAllPending(new Error("Client disconnected"));
   }
 
-  private async send(method: string, params?: unknown): Promise<unknown> {
+  private async send(method: string, params?: unknown, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<unknown> {
     if (!this.process?.stdin?.writable) throw new Error("ACP process not connected");
 
     const id = ++this.requestId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`ACP request ${method} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      this.pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
       const msg = JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n";
       this.process!.stdin!.write(msg);
     });
@@ -133,7 +143,9 @@ export class AcpClient extends EventEmitter {
         } else if ("method" in msg) {
           this.handleNotification(msg);
         }
-      } catch { /* skip malformed */ }
+      } catch (e) {
+        console.error("[acp-client] Failed to parse JSON-RPC message:", (e as Error).message);
+      }
     }
   }
 
@@ -188,6 +200,19 @@ export class AcpClient extends EventEmitter {
   }
 
   /**
+   * Validate that a file path resolves within the allowed workspace root.
+   * Prevents path traversal attacks (e.g. ../../etc/passwd).
+   */
+  private validatePath(filePath: string): string {
+    const root = path.resolve(WORKSPACE_DIR);
+    const resolved = path.resolve(root, filePath);
+    if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+      throw new Error(`Path traversal blocked: ${filePath}`);
+    }
+    return resolved;
+  }
+
+  /**
    * Handle incoming JSON-RPC requests from kiro-cli.
    * kiro-cli sends requests for filesystem operations and terminal commands
    * when the agent uses tools like read/write/shell.
@@ -211,26 +236,34 @@ export class AcpClient extends EventEmitter {
           const filePath = params.path as string;
           if (!filePath) { respondError(-32602, "Missing path"); return; }
           try {
-            const content = fs.readFileSync(filePath, "utf-8");
-            respond({ content });
+            const safe = this.validatePath(filePath);
+            fs.readFile(safe, "utf-8", (err, content) => {
+              if (err) respondError(-32000, err.message);
+              else respond({ content });
+            });
           } catch (e) {
-            respondError(-32000, (e as Error).message);
+            respondError(-32600, (e as Error).message);
           }
-          break;
+          return;
         }
         case "fs/writeTextFile": {
           const filePath = params.path as string;
           const content = params.content as string;
           if (!filePath || content === undefined) { respondError(-32602, "Missing path or content"); return; }
           try {
-            const dir = path.dirname(filePath);
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(filePath, content, "utf-8");
-            respond({});
+            const safe = this.validatePath(filePath);
+            const dir = path.dirname(safe);
+            fs.mkdir(dir, { recursive: true }, (mkErr) => {
+              if (mkErr) { respondError(-32000, mkErr.message); return; }
+              fs.writeFile(safe, content, "utf-8", (wErr) => {
+                if (wErr) respondError(-32000, wErr.message);
+                else respond({});
+              });
+            });
           } catch (e) {
-            respondError(-32000, (e as Error).message);
+            respondError(-32600, (e as Error).message);
           }
-          break;
+          return;
         }
         case "terminal/execute": {
           const command = (params.command as string) || (params.cmd as string);
@@ -239,24 +272,24 @@ export class AcpClient extends EventEmitter {
           exec(command, { cwd: cwd || undefined, timeout: 60000, maxBuffer: 1024 * 1024 * 5 }, (err, stdout, stderr) => {
             respond({ exitCode: err?.code ?? 0, stdout: stdout || "", stderr: stderr || "" });
           });
-          return; // async — don't fall through
+          return;
         }
         case "fs/listDirectory": {
           const dirPath = params.path as string;
           if (!dirPath) { respondError(-32602, "Missing path"); return; }
           try {
-            const entries = fs.readdirSync(dirPath, { withFileTypes: true }).map(e => ({
-              name: e.name,
-              isDirectory: e.isDirectory(),
-            }));
-            respond({ entries });
+            const safe = this.validatePath(dirPath);
+            fs.readdir(safe, { withFileTypes: true }, (err, dirents) => {
+              if (err) { respondError(-32000, err.message); return; }
+              const entries = dirents.map(e => ({ name: e.name, isDirectory: e.isDirectory() }));
+              respond({ entries });
+            });
           } catch (e) {
-            respondError(-32000, (e as Error).message);
+            respondError(-32600, (e as Error).message);
           }
-          break;
+          return;
         }
         default:
-          // Respond with empty result for unknown methods to unblock kiro-cli
           respond({});
       }
     } catch (e) {

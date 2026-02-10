@@ -2,17 +2,7 @@
 
 import Link from "next/link";
 import { useState, useCallback } from "react";
-
-interface ChatSession {
-  id: string;
-  agentId: string;
-  agentName: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount?: number;
-  lastMessage?: string;
-}
+import type { ChatSession } from "@/lib/db/chat-history";
 
 export default function RecentChats({ sessions: initial }: { sessions: ChatSession[] }) {
   const [sessions, setSessions] = useState(initial);
