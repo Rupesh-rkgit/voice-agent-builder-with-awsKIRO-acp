@@ -11,8 +11,10 @@
  *   - Prompt result: { stopReason: "end_turn" }
  */
 
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, exec, type ChildProcess } from "child_process";
 import { EventEmitter } from "events";
+import fs from "fs";
+import path from "path";
 
 const KIRO_CLI_PATH = process.env.KIRO_CLI_PATH || "kiro-cli";
 
@@ -123,7 +125,10 @@ export class AcpClient extends EventEmitter {
       if (!trimmed) continue;
       try {
         const msg = JSON.parse(trimmed);
-        if ("id" in msg && msg.id !== undefined && msg.id !== null && this.pending.has(msg.id)) {
+        if ("id" in msg && "method" in msg) {
+          // Incoming REQUEST from kiro-cli (has both id and method)
+          this.handleRequest(msg);
+        } else if ("id" in msg && msg.id !== undefined && msg.id !== null && this.pending.has(msg.id)) {
           this.handleResponse(msg);
         } else if ("method" in msg) {
           this.handleNotification(msg);
@@ -179,6 +184,83 @@ export class AcpClient extends EventEmitter {
       }
 
       this.emit("update", event);
+    }
+  }
+
+  /**
+   * Handle incoming JSON-RPC requests from kiro-cli.
+   * kiro-cli sends requests for filesystem operations and terminal commands
+   * when the agent uses tools like read/write/shell.
+   */
+  private handleRequest(msg: { id: number; method: string; params?: Record<string, unknown> }): void {
+    const params = msg.params || {};
+
+    const respond = (result: unknown) => {
+      const reply = JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }) + "\n";
+      this.process?.stdin?.write(reply);
+    };
+
+    const respondError = (code: number, message: string) => {
+      const reply = JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code, message } }) + "\n";
+      this.process?.stdin?.write(reply);
+    };
+
+    try {
+      switch (msg.method) {
+        case "fs/readTextFile": {
+          const filePath = params.path as string;
+          if (!filePath) { respondError(-32602, "Missing path"); return; }
+          try {
+            const content = fs.readFileSync(filePath, "utf-8");
+            respond({ content });
+          } catch (e) {
+            respondError(-32000, (e as Error).message);
+          }
+          break;
+        }
+        case "fs/writeTextFile": {
+          const filePath = params.path as string;
+          const content = params.content as string;
+          if (!filePath || content === undefined) { respondError(-32602, "Missing path or content"); return; }
+          try {
+            const dir = path.dirname(filePath);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(filePath, content, "utf-8");
+            respond({});
+          } catch (e) {
+            respondError(-32000, (e as Error).message);
+          }
+          break;
+        }
+        case "terminal/execute": {
+          const command = (params.command as string) || (params.cmd as string);
+          const cwd = params.cwd as string | undefined;
+          if (!command) { respondError(-32602, "Missing command"); return; }
+          exec(command, { cwd: cwd || undefined, timeout: 60000, maxBuffer: 1024 * 1024 * 5 }, (err, stdout, stderr) => {
+            respond({ exitCode: err?.code ?? 0, stdout: stdout || "", stderr: stderr || "" });
+          });
+          return; // async — don't fall through
+        }
+        case "fs/listDirectory": {
+          const dirPath = params.path as string;
+          if (!dirPath) { respondError(-32602, "Missing path"); return; }
+          try {
+            const entries = fs.readdirSync(dirPath, { withFileTypes: true }).map(e => ({
+              name: e.name,
+              isDirectory: e.isDirectory(),
+            }));
+            respond({ entries });
+          } catch (e) {
+            respondError(-32000, (e as Error).message);
+          }
+          break;
+        }
+        default:
+          // Respond with empty result for unknown methods to unblock kiro-cli
+          respond({});
+      }
+    } catch (e) {
+      respondError(-32603, (e as Error).message);
     }
   }
 

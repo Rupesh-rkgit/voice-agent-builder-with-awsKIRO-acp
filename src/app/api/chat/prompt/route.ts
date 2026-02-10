@@ -120,8 +120,6 @@ export async function POST(req: NextRequest) {
 
             client.removeListener("update", onSubUpdate);
 
-            client.removeListener("update", onSubUpdate);
-
             if (delegatedText.trim()) {
               saveMessage(sessionId, "assistant", delegatedText, agentName);
             }

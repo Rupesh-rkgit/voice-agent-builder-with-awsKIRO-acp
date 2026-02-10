@@ -2,7 +2,11 @@
   "name": "voice-agent-studio",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
+  },
   "scripts": {
+    "predev": "node -e \"const v=parseInt(process.version.slice(1));if(v!==20){console.error('\\n\\x1b[31m✖ Node '+process.version+' detected. This project requires Node 20.\\n  Run: nvm use\\x1b[0m\\n');process.exit(1)}\"",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
