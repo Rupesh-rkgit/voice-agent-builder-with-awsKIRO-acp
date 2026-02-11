@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-APP_DIR="/home/ec2-user/voice-agent-studio"
+APP_DIR="/home/ec2-user/voice-agent-builder-with-awsKIRO-acp"
 NODE_VERSION="20"
 
 echo "=== 1. System packages ==="

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-APP_DIR="/home/ec2-user/voice-agent-studio"
+APP_DIR="/home/ec2-user/voice-agent-builder-with-awsKIRO-acp"
 export NVM_DIR="$HOME/.nvm"
 source "$NVM_DIR/nvm.sh"
 
@@ -14,8 +14,8 @@ echo "=== Building ==="
 npm run build
 
 echo "=== Starting app with pm2 ==="
-pm2 delete voice-agent-studio 2>/dev/null || true
-pm2 start npm --name voice-agent-studio -- start
+pm2 delete voice-agent-builder-with-awsKIRO-acp 2>/dev/null || true
+pm2 start npm --name voice-agent-builder-with-awsKIRO-acp -- start
 pm2 save
 pm2 startup systemd -u ec2-user --hp /home/ec2-user | tail -1 | sudo bash
 
