@@ -249,7 +249,7 @@ export default function ConversationBuilder() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] flex-col">
+    <div className="flex h-[calc(100vh-11rem)] flex-col">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 pb-4 pr-1">
         {messages.map((msg) => (
@@ -288,11 +288,11 @@ export default function ConversationBuilder() {
               {renderConfigCard(pendingConfig)}
               <div className="mt-3 flex gap-2">
                 <button onClick={handleConfirmSingle}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors">
+                  className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all">
                   ✓ Create Agent
                 </button>
                 <button onClick={handleEdit}
-                  className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 transition-colors">
+                  className="btn-secondary rounded-lg px-4 py-2 text-sm text-slate-300 transition-colors">
                   ✎ Edit
                 </button>
               </div>
@@ -314,11 +314,11 @@ export default function ConversationBuilder() {
               ))}
               <div className="mt-3 flex gap-2">
                 <button onClick={handleConfirmTeam}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors">
+                  className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all">
                   ✓ Create Team ({pendingTeam.length} agents)
                 </button>
                 <button onClick={handleEdit}
-                  className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 transition-colors">
+                  className="btn-secondary rounded-lg px-4 py-2 text-sm text-slate-300 transition-colors">
                   ✎ Edit
                 </button>
               </div>

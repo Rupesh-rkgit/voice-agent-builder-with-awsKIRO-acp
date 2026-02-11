@@ -43,26 +43,33 @@ export default function AgentConfigEditor({
   }
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Agent Configuration</h2>
+        <h2 className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Agent Configuration</h2>
         <div className="flex items-center gap-2">
-          {success && <span className="text-xs text-emerald-400">✓ Saved</span>}
-          {error && <span className="text-xs text-red-400">{error}</span>}
+          {success && <span className="text-xs text-emerald-400 animate-fade-in">✓ Saved</span>}
+          {error && <span className="text-xs text-red-400 animate-fade-in">{error}</span>}
           {editing ? (
             <>
-              <button onClick={() => { setEditing(false); setValue(JSON.stringify(config, null, 2)); setError(null); }}
-                className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700">
+              <button
+                onClick={() => { setEditing(false); setValue(JSON.stringify(config, null, 2)); setError(null); }}
+                className="btn-secondary rounded-lg px-3 py-1.5 text-xs text-slate-400 transition-colors"
+              >
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={saving}
-                className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs text-white hover:bg-violet-700 disabled:opacity-50">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-all disabled:opacity-50"
+              >
                 {saving ? "Saving..." : "Save"}
               </button>
             </>
           ) : (
-            <button onClick={() => setEditing(true)}
-              className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700">
+            <button
+              onClick={() => setEditing(true)}
+              className="btn-secondary rounded-lg px-3 py-1.5 text-xs text-slate-400 transition-colors"
+            >
               ✏️ Edit
             </button>
           )}
@@ -74,10 +81,10 @@ export default function AgentConfigEditor({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           spellCheck={false}
-          className="mt-4 w-full rounded-lg bg-slate-950 p-4 text-sm text-slate-300 font-mono border border-slate-700 outline-none focus:border-violet-500 resize-y min-h-[300px]"
+          className="mt-4 w-full rounded-xl bg-black/30 p-4 text-sm text-slate-300 font-mono ring-1 ring-white/[0.06] outline-none focus:ring-violet-500/30 resize-y min-h-[300px] transition-all"
         />
       ) : (
-        <pre className="mt-4 overflow-x-auto rounded-lg bg-slate-950 p-4 text-sm text-slate-300 font-mono">
+        <pre className="mt-4 overflow-x-auto rounded-xl bg-black/30 p-4 text-sm text-slate-300 font-mono ring-1 ring-white/[0.04]">
           {JSON.stringify(config, null, 2)}
         </pre>
       )}

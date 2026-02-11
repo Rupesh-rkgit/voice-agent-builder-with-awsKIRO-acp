@@ -4,12 +4,13 @@ import type { AgentMeta } from "@/lib/agents/schema";
 import { useRouter } from "next/navigation";
 
 const TOOL_COLORS: Record<string, string> = {
-  aws: "bg-amber-900/50 text-amber-300",
-  shell: "bg-emerald-900/50 text-emerald-300",
-  read: "bg-blue-900/50 text-blue-300",
-  write: "bg-purple-900/50 text-purple-300",
-  code: "bg-cyan-900/50 text-cyan-300",
-  "@git": "bg-orange-900/50 text-orange-300",
+  aws: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
+  shell: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
+  read: "bg-blue-500/10 text-blue-400 ring-blue-500/20",
+  write: "bg-purple-500/10 text-purple-400 ring-purple-500/20",
+  code: "bg-cyan-500/10 text-cyan-400 ring-cyan-500/20",
+  "@git": "bg-orange-500/10 text-orange-400 ring-orange-500/20",
+  "@fetch": "bg-pink-500/10 text-pink-400 ring-pink-500/20",
 };
 
 export default function AgentCard({
@@ -22,64 +23,75 @@ export default function AgentCard({
   const router = useRouter();
   const tools = agent.config?.tools || [];
   const model = agent.config?.model || "claude-sonnet-4";
+  const isOrchestrator = agent.parentAgentId === null && agent.name.includes("orchestrator");
 
   return (
-    <div className="group rounded-xl border border-slate-800 bg-slate-900/50 p-5 hover:border-slate-700 transition-colors">
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-white truncate">{agent.name}</h3>
-          <p className="mt-1 text-sm text-slate-400 line-clamp-2">{agent.description}</p>
+    <div className="card-glow group rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 hover:border-white/[0.12] transition-all duration-300">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${
+            isOrchestrator
+              ? "bg-gradient-to-br from-violet-500/20 to-indigo-500/20 ring-1 ring-violet-500/20"
+              : "bg-white/[0.04] ring-1 ring-white/[0.06]"
+          }`}>
+            {isOrchestrator ? "🎯" : "🤖"}
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-white truncate">{agent.name}</h3>
+            <p className="mt-0.5 text-sm text-slate-500 line-clamp-2 leading-relaxed">{agent.description}</p>
+          </div>
         </div>
-        <span className="ml-3 shrink-0 rounded-full bg-emerald-900/30 px-2 py-0.5 text-xs text-emerald-400">
+        <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400 ring-1 ring-emerald-500/20">
           {model.replace("claude-", "")}
         </span>
       </div>
 
       {/* Tools */}
       {tools.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="mt-4 flex flex-wrap gap-1.5">
           {tools.slice(0, 5).map((tool) => (
             <span
               key={tool}
-              className={`rounded-md px-2 py-0.5 text-xs ${TOOL_COLORS[tool] || "bg-slate-800 text-slate-400"}`}
+              className={`rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ${TOOL_COLORS[tool] || "bg-white/[0.04] text-slate-400 ring-white/[0.06]"}`}
             >
               {tool}
             </span>
           ))}
           {tools.length > 5 && (
-            <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs text-slate-500">
+            <span className="rounded-md bg-white/[0.04] px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-white/[0.06]">
               +{tools.length - 5}
             </span>
           )}
         </div>
       )}
 
-      {/* Actions */}
-      <div className="mt-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Actions — always visible on mobile, hover on desktop */}
+      <div className="mt-4 flex items-center gap-2 pt-3 border-t border-white/[0.04] sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
         <button
           onClick={() => router.push(`/chat/${agent.id}`)}
-          className="rounded-lg bg-violet-600/20 px-3 py-1.5 text-xs text-violet-300 hover:bg-violet-600/30"
+          className="rounded-lg bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-400 ring-1 ring-violet-500/20 hover:bg-violet-500/20 transition-colors"
         >
           💬 Chat
         </button>
         <button
           onClick={() => router.push(`/agents/${agent.id}`)}
-          className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-700"
+          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-400 ring-1 ring-white/[0.06] hover:bg-white/[0.08] transition-colors"
         >
           ✏️ Edit
         </button>
         {onDelete && (
           <button
             onClick={() => onDelete(agent.id)}
-            className="rounded-lg bg-red-900/20 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30"
+            className="ml-auto rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/20 transition-colors"
+            aria-label={`Delete agent ${agent.name}`}
           >
             🗑️
           </button>
         )}
       </div>
 
-      <p className="mt-3 text-xs text-slate-600">
-        Created {new Date(agent.createdAt).toLocaleDateString()}
+      <p className="mt-3 text-[11px] text-slate-600">
+        Created {new Date(agent.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
       </p>
     </div>
   );
