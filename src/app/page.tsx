@@ -31,7 +31,7 @@ export default async function HomePage() {
             </svg>
           </div>
           <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
-            Build AI Agents with <span className="gradient-text">Your Voice</span>
+            Build AI Agents with <span className="gradient-text">Agents</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-400 leading-relaxed">
             Create, orchestrate, and chat with multi-agent AI systems powered by Kiro CLI.
