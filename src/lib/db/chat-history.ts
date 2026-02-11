@@ -5,17 +5,19 @@
 
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 
-const DB_PATH = path.join(
+const DB_DIR = path.join(
   process.env.KIRO_WORKSPACE_DIR || process.cwd(),
-  ".kiro",
-  "chat-history.db"
+  ".kiro"
 );
+const DB_PATH = path.join(DB_DIR, "chat-history.db");
 
 let _db: Database.Database | null = null;
 
 function getDb(): Database.Database {
   if (!_db) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
     _db = new Database(DB_PATH);
     _db.pragma("journal_mode = WAL");
     _db.exec(`
