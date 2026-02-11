@@ -113,21 +113,26 @@ if [ ! -f /etc/caddy/certs/cert.pem ]; then
     echo "Warning: Could not detect public IP — certificate will have CN only"
   fi
 
-  # Generate cert
+  # Generate cert to temp dir first (avoids permission issues), then move
+  TMPDIR=$(mktemp -d)
   # shellcheck disable=SC2086
   openssl req -x509 -newkey rsa:2048 -nodes \
-    -keyout /etc/caddy/certs/key.pem \
-    -out /etc/caddy/certs/cert.pem \
+    -keyout "$TMPDIR/key.pem" \
+    -out "$TMPDIR/cert.pem" \
     -days 30 \
     -subj "/CN=${APP_NAME}" \
     $SAN_EXT 2>/dev/null \
   || openssl req -x509 -newkey rsa:2048 -nodes \
-    -keyout /etc/caddy/certs/key.pem \
-    -out /etc/caddy/certs/cert.pem \
+    -keyout "$TMPDIR/key.pem" \
+    -out "$TMPDIR/cert.pem" \
     -days 30 \
     -subj "/CN=${APP_NAME}"
 
-  sudo chown -R caddy:caddy /etc/caddy/certs
+  sudo mv "$TMPDIR/key.pem" /etc/caddy/certs/key.pem
+  sudo mv "$TMPDIR/cert.pem" /etc/caddy/certs/cert.pem
+  rm -rf "$TMPDIR"
+
+  sudo chown caddy:caddy /etc/caddy/certs/key.pem /etc/caddy/certs/cert.pem
   sudo chmod 600 /etc/caddy/certs/key.pem
   sudo chmod 644 /etc/caddy/certs/cert.pem
   echo "Certificate created at /etc/caddy/certs/"
