@@ -1,19 +1,22 @@
-# EC2 Deployment Guide (Demo/MVP)
+# EC2 Deployment Guide (Amazon Linux 2023)
 
 Single EC2 instance, no containers, no orchestration. ~15 min setup.
 
 ## Architecture
 
 ```
-Internet → EC2 (t3.medium) → Caddy (:80/:443) → Next.js (:3000) → kiro-cli (stdio)
-                                                       ↓
-                                                  SQLite (local disk)
-                                                  .kiro/agents/ (local disk)
+Internet → EC2 (t3.medium)
+              ↕
+           Caddy (:80 + :443)    ← reverse proxy, self-signed TLS or Let's Encrypt
+              ↕
+           Next.js (:3000)       ← managed by pm2
+              ↕
+           kiro-cli (stdio)      ← ACP child processes
+              ↕
+           SQLite + .kiro/agents/ (local disk)
 ```
 
 ## Step 1 — Launch EC2
-
-**Console or CLI:**
 
 ```bash
 aws ec2 run-instances \
@@ -33,7 +36,7 @@ aws ec2 run-instances \
 |------|------|--------|---------|
 | SSH | 22 | Your IP | SSH access |
 | HTTP | 80 | 0.0.0.0/0 | Web traffic |
-| HTTPS | 443 | 0.0.0.0/0 | Web traffic (if using domain) |
+| HTTPS | 443 | 0.0.0.0/0 | Web traffic (self-signed or domain) |
 
 **IAM instance profile permissions** (for Kiro CLI's Bedrock access):
 
@@ -53,77 +56,68 @@ aws ec2 run-instances \
 }
 ```
 
-> Polly and Transcribe are not needed — the app uses the browser's Web Speech API for voice input.
-
 ## Step 2 — Install Kiro CLI on EC2
-
-SSH in and install kiro-cli:
 
 ```bash
 ssh -i <key>.pem ec2-user@<PUBLIC_IP>
 
 # Install kiro-cli (check docs for latest method)
 curl -fsSL https://kiro.dev/install.sh | bash
-# OR download the binary directly
 kiro-cli --version
-kiro-cli auth login   # authenticate
+kiro-cli auth login
 ```
 
-## Step 3 — Run Setup Script
+## Step 3 — Clone & Run Setup
 
 ```bash
-# Clone your repo (or scp the code)
-git clone <YOUR_REPO_URL> ~/voice-agent-studio
-cd ~/voice-agent-studio
+git clone <YOUR_REPO_URL> ~/voice-agent-builder-with-awsKIRO-acp
+cd ~/voice-agent-builder-with-awsKIRO-acp
 
-# Run setup
 bash deploy/ec2-setup.sh
 ```
+
+This installs Node.js 20, pm2, Caddy (binary), generates a self-signed TLS cert, and runs `npm ci`.
 
 ## Step 4 — Configure Environment
 
 ```bash
-cd ~/voice-agent-studio
 nano .env.local
 ```
 
 ```env
 KIRO_CLI_PATH=/home/ec2-user/.local/bin/kiro-cli
-KIRO_WORKSPACE_DIR=/home/ec2-user/voice-agent-studio
+KIRO_WORKSPACE_DIR=/home/ec2-user/voice-agent-builder-with-awsKIRO-acp
 AWS_REGION=us-east-1
 MAX_ACP_SESSIONS=10
 ```
 
 ## Step 5 — Start
 
+**Without a domain** (HTTP + self-signed HTTPS):
+
 ```bash
 bash deploy/ec2-start.sh
 ```
 
-App is now live at `http://<EC2_PUBLIC_IP>`.
-
-## Optional: Custom Domain + HTTPS
-
-1. Point your domain's DNS (A record) to the EC2 public IP
-2. Edit Caddy config:
+**With a domain** (auto Let's Encrypt HTTPS):
 
 ```bash
-sudo nano /etc/caddy/Caddyfile
+bash deploy/ec2-start.sh demo.yourdomain.com
 ```
 
-Change `:80` to your domain:
+App is now live:
+- `http://<EC2_PUBLIC_IP>` — plain HTTP
+- `https://<EC2_PUBLIC_IP>` — self-signed (browser warning expected)
+- `https://demo.yourdomain.com` — if domain provided (valid cert, no warning)
 
-```
-demo.yourdomain.com {
-    reverse_proxy localhost:3000
-}
-```
+## What the Scripts Do
 
-```bash
-sudo systemctl restart caddy
-```
+| Script | Purpose |
+|--------|---------|
+| `ec2-setup.sh` | One-time: installs system deps, Node.js, pm2, Caddy binary + systemd unit, self-signed cert, runs `npm ci` |
+| `ec2-start.sh` | Repeatable: builds app, starts pm2, writes Caddyfile, enables Caddy |
 
-Caddy auto-provisions a Let's Encrypt certificate. Zero config.
+**Caddy is installed as a binary** (not via dnf/copr — those don't work on Amazon Linux). The setup script creates the systemd service file, the `caddy` system user, and all required directories.
 
 ## Useful Commands
 
