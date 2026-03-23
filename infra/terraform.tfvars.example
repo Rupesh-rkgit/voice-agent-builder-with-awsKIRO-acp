@@ -1,0 +1,30 @@
+# =============================================================================
+# Copy this file to terraform.tfvars and fill in YOUR values
+# =============================================================================
+#   cp terraform.tfvars.example terraform.tfvars
+#   nano terraform.tfvars
+# =============================================================================
+
+# REQUIRED: Your existing EC2 key pair name (for SSH access)
+# Find yours: aws ec2 describe-key-pairs --query 'KeyPairs[*].KeyName' --output text
+key_pair_name = "your-key-pair-name"
+
+# REQUIRED: Your public IP for SSH access (restrict SSH to just your IP)
+# Find yours: curl -s https://checkip.amazonaws.com
+allowed_ssh_cidr = "YOUR_IP/32"
+
+# REQUIRED: Your Bedrock bearer token (from .env.local)
+aws_bearer_token_bedrock = ""
+
+# ── Optional overrides (defaults are fine for most cases) ────────────────────
+
+# aws_region               = "us-east-1"
+# instance_type            = "t3.medium"
+# github_repo_url          = "https://github.com/Rupesh-rkgit/voice-agent-studio.git"
+# github_branch            = "VoiceAddition"
+# bedrock_model_id         = "anthropic.claude-sonnet-4-20250514-v1:0"
+# polly_voice_id           = "Joanna"
+# polly_engine             = "neural"
+# transcribe_language_code = "en-US"
+# max_acp_sessions         = 10
+# volume_size              = 20

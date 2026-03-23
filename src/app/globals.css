@@ -107,6 +107,13 @@ body::before {
 }
 .voice-pulse { animation: voice-pulse 1.5s ease-in-out infinite; }
 
+/* ─── Speaking pulse (TTS active) ─── */
+@keyframes speaking-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(56, 189, 248, 0); }
+}
+.speaking-pulse { animation: speaking-pulse 1.2s ease-in-out infinite; }
+
 /* ─── Typing indicator ─── */
 @keyframes blink {
   0%, 100% { opacity: 0.2; }

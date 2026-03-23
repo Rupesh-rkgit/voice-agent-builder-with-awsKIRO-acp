@@ -32,9 +32,15 @@ export const KiroAgentConfigSchema = z.object({
 
 export type KiroAgentConfig = z.infer<typeof KiroAgentConfigSchema>;
 
+export const AgentFileSchema = z.object({
+  path: z.string().min(1),
+  content: z.string(),
+});
+
 // --- API Request/Response Types ---
 export const CreateAgentRequestSchema = KiroAgentConfigSchema.extend({
   parentAgentId: z.string().uuid().nullable().optional(),
+  additionalFiles: z.array(AgentFileSchema).optional(),
 });
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
 

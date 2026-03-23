@@ -14,8 +14,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const parsed = CreateAgentRequestSchema.parse(body);
-    const meta = await createAgent(parsed);
+    const { additionalFiles, ...agentData } = CreateAgentRequestSchema.parse(body);
+    const meta = await createAgent(agentData, additionalFiles);
     return NextResponse.json(meta, { status: 201 });
   } catch (e) {
     if (e instanceof ZodError) {
