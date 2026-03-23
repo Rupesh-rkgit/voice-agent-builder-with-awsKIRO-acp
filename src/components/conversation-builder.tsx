@@ -5,25 +5,50 @@ import {
   useBuilderStore,
   parseConfigFromResponse,
   type ExtractedConfig,
+  type AgentFile,
 } from "@/stores/builder-store";
 import { useVoice } from "@/hooks/use-voice";
+import { useSpeech } from "@/hooks/use-speech";
 import { useRouter } from "next/navigation";
 
 export default function ConversationBuilder() {
   const store = useBuilderStore();
   const {
     messages, streaming, streamingText,
-    pendingConfig, pendingTeam, createdAgents,
+    pendingConfig, pendingTeam, pendingFiles, createdAgents,
     addMessage, setStreaming, setStreamingText, appendStreamingText,
-    setPendingConfig, setPendingTeam, addCreatedAgent, reset,
+    setPendingConfig, setPendingTeam, setPendingFiles, addCreatedAgent, reset,
   } = store;
 
-  const { isListening, transcript, startListening, stopListening, supported } = useVoice();
+  const { isListening, transcript, interimTranscript, startListening, stopListening, supported } = useVoice();
+  const [voiceMode, setVoiceMode] = useState(false);
+  const voiceModeRef = useRef(false);
+  const { enqueue, stop: stopSpeech, isSpeaking } = useSpeech(() => {
+    if (voiceModeRef.current) startListening();
+  });
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   const [textInput, setTextInput] = useState("");
   const [creating, setCreating] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const sentTranscriptRef = useRef("");
+  const spokenLenRef = useRef(0);
+  const lastStreamTextRef = useRef("");
   const router = useRouter();
+
+  // Reset client + server state on mount (fresh session every time)
+  useEffect(() => {
+    reset();
+    fetch("/api/builder/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Strip markdown for cleaner TTS
+  function stripMd(t: string) {
+    return t.replace(/\*\*(.*?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/```[\s\S]*?```/g, "").replace(/#+\s/g, "").trim();
+  }
 
   // Scroll to bottom on new messages / streaming
   useEffect(() => {
@@ -38,17 +63,41 @@ export default function ConversationBuilder() {
     }
   }, [transcript, isListening]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-start listening after assistant finishes (voice-first UX)
+  // Incremental TTS: speak sentences as they stream in
   useEffect(() => {
-    if (!streaming && messages.length > 0 && supported && !creating && !pendingConfig && !pendingTeam) {
-      const last = messages[messages.length - 1];
-      if (last?.role === "assistant") {
-        // Small delay so the user hears the response first
-        const timer = setTimeout(() => startListening(), 800);
-        return () => clearTimeout(timer);
-      }
+    if (!streaming || !voiceMode || !streamingText) return;
+    lastStreamTextRef.current = streamingText;
+    const unspoken = streamingText.slice(spokenLenRef.current);
+    if (!unspoken) return;
+
+    // Find sentence boundaries: . ! ? followed by whitespace, or newlines
+    const regex = /[.!?]\s+|\n+/g;
+    let lastEnd = 0;
+    let match;
+    while ((match = regex.exec(unspoken)) !== null) {
+      const sentence = stripMd(unspoken.slice(lastEnd, match.index + 1));
+      if (sentence) enqueue(sentence);
+      lastEnd = match.index + match[0].length;
     }
-  }, [streaming, messages, supported, creating, pendingConfig, pendingTeam]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (lastEnd > 0) spokenLenRef.current += lastEnd;
+  }, [streamingText, streaming, voiceMode, enqueue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush remaining text when streaming ends
+  useEffect(() => {
+    if (streaming) {
+      spokenLenRef.current = 0;
+      lastStreamTextRef.current = "";
+      return;
+    }
+    if (!voiceMode || !lastStreamTextRef.current) return;
+    const remaining = stripMd(lastStreamTextRef.current.slice(spokenLenRef.current));
+    // Skip if remaining looks like JSON/config
+    if (remaining && !remaining.startsWith("{") && !remaining.startsWith("```")) {
+      enqueue(remaining);
+    }
+    spokenLenRef.current = 0;
+    lastStreamTextRef.current = "";
+  }, [streaming, voiceMode, enqueue]);
 
   const sendToLLM = useCallback(async (userText: string) => {
     addMessage("user", userText);
@@ -110,17 +159,18 @@ export default function ConversationBuilder() {
       }
 
       // Parse config from the full response
-      const { displayText, config, team } = parseConfigFromResponse(fullText);
+      const { displayText, config, team, files } = parseConfigFromResponse(fullText);
       addMessage("assistant", displayText || fullText);
       if (config) setPendingConfig(config);
       if (team) setPendingTeam(team);
+      if (files.length) setPendingFiles(files);
     } catch (e) {
       addMessage("assistant", `❌ ${(e as Error).message}`);
     } finally {
       setStreaming(false);
       setStreamingText("");
     }
-  }, [addMessage, setStreaming, setStreamingText, appendStreamingText, setPendingConfig, setPendingTeam]);
+  }, [addMessage, setStreaming, setStreamingText, appendStreamingText, setPendingConfig, setPendingTeam, setPendingFiles]);
 
   function handleSend(text: string) {
     const trimmed = text.trim();
@@ -153,7 +203,7 @@ export default function ConversationBuilder() {
     sendToLLM(trimmed);
   }
 
-  async function createAgent(config: ExtractedConfig, parentId?: string) {
+  async function createAgent(config: ExtractedConfig, parentId?: string, files?: AgentFile[]) {
     const res = await fetch("/api/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -163,7 +213,12 @@ export default function ConversationBuilder() {
         prompt: config.prompt,
         tools: config.tools,
         model: config.model || "claude-sonnet-4",
+        resources: config.resources,
+        hooks: config.hooks,
+        allowedTools: config.allowedTools,
+        welcomeMessage: config.welcomeMessage,
         parentAgentId: parentId || null,
+        additionalFiles: files,
       }),
     });
     if (!res.ok) {
@@ -177,10 +232,13 @@ export default function ConversationBuilder() {
     if (!pendingConfig) return;
     setCreating(true);
     try {
-      const meta = await createAgent(pendingConfig);
+      const meta = await createAgent(pendingConfig, undefined, pendingFiles);
       addCreatedAgent({ id: meta.id, name: meta.name });
       setPendingConfig(null);
-      addMessage("assistant", `✅ Agent **${meta.name}** created! Say "chat" to talk to it, "another" to create more, or "dashboard" to go home.`);
+      setPendingFiles([]);
+      const fileCount = pendingFiles.length;
+      const fileMsg = fileCount ? ` + ${fileCount} file${fileCount > 1 ? "s" : ""}` : "";
+      addMessage("assistant", `✅ Agent **${meta.name}** created${fileMsg}! Say "chat" to talk to it, "another" to create more, or "dashboard" to go home.`);
     } catch (e) {
       addMessage("assistant", `❌ ${(e as Error).message}`);
     } finally {
@@ -215,6 +273,7 @@ export default function ConversationBuilder() {
   function handleEdit() {
     setPendingConfig(null);
     setPendingTeam(null);
+    setPendingFiles([]);
     sendToLLM("I want to make some changes to the config.");
   }
 
@@ -239,6 +298,10 @@ export default function ConversationBuilder() {
           <div><span className="text-slate-500">description:</span> {config.description}</div>
           <div><span className="text-slate-500">tools:</span> {config.tools?.join(", ")}</div>
           <div><span className="text-slate-500">model:</span> {config.model}</div>
+          {config.resources?.length && <div><span className="text-slate-500">resources:</span> {config.resources.map(r => typeof r === "string" ? r : JSON.stringify(r)).join(", ")}</div>}
+          {config.allowedTools?.length && <div><span className="text-slate-500">allowedTools:</span> {config.allowedTools.join(", ")}</div>}
+          {config.hooks && <div><span className="text-slate-500">hooks:</span> {Object.keys(config.hooks).join(", ")}</div>}
+          {config.welcomeMessage && <div><span className="text-slate-500">welcomeMessage:</span> {config.welcomeMessage}</div>}
           <div className="pt-1 border-t border-slate-800">
             <span className="text-slate-500">prompt:</span>
             <p className="mt-1 text-slate-400 whitespace-pre-wrap">{config.prompt}</p>
@@ -286,10 +349,18 @@ export default function ConversationBuilder() {
           <div className="flex justify-start">
             <div className="max-w-[85%]">
               {renderConfigCard(pendingConfig)}
+              {pendingFiles.length > 0 && (
+                <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-mono">
+                  <div className="text-slate-500 mb-1">📁 Additional files:</div>
+                  {pendingFiles.map((f, i) => (
+                    <div key={i} className="text-emerald-400 truncate">{f.path}</div>
+                  ))}
+                </div>
+              )}
               <div className="mt-3 flex gap-2">
                 <button onClick={handleConfirmSingle}
                   className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all">
-                  ✓ Create Agent
+                  ✓ Create Agent{pendingFiles.length > 0 ? ` + ${pendingFiles.length} files` : ""}
                 </button>
                 <button onClick={handleEdit}
                   className="btn-secondary rounded-lg px-4 py-2 text-sm text-slate-300 transition-colors">
@@ -345,8 +416,15 @@ export default function ConversationBuilder() {
 
       {/* Input bar */}
       <div className="border-t border-slate-800 pt-4">
+        {/* Speaking indicator */}
+        {isSpeaking && (
+          <div className="mb-2 flex items-center gap-2 text-xs text-sky-400">
+            <span className="h-2 w-2 rounded-full bg-sky-400 speaking-pulse" />
+            Speaking...
+          </div>
+        )}
         {/* Listening indicator */}
-        {isListening && (
+        {isListening && !isSpeaking && (
           <div className="mb-2 flex items-center gap-2 text-xs text-red-400">
             <span className="h-2 w-2 rounded-full bg-red-500 voice-pulse" />
             Listening... speak now
@@ -355,26 +433,35 @@ export default function ConversationBuilder() {
         <div className="flex items-center gap-3">
           {supported && (
             <button
-              onClick={isListening ? stopListening : startListening}
+              onClick={() => {
+                if (isSpeaking) { stopSpeech(); return; }
+                if (isListening) { stopListening(); return; }
+                setVoiceMode(true);
+                startListening();
+              }}
               disabled={streaming || creating}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
-                isListening
-                  ? "bg-red-500 voice-pulse text-white"
-                  : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white disabled:opacity-30"
+                isSpeaking
+                  ? "bg-sky-500 speaking-pulse text-white"
+                  : isListening
+                    ? "bg-red-500 voice-pulse text-white"
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white disabled:opacity-30"
               }`}
-              title={isListening ? "Stop listening" : "Voice input"}
+              title={isSpeaking ? "Stop speaking" : isListening ? "Stop listening" : "Voice input"}
             >
-              🎤
+              {isSpeaking ? "🔊" : "🎤"}
             </button>
           )}
           <input
             type="text"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
+            value={isListening && interimTranscript ? interimTranscript : textInput}
+            onChange={(e) => { setTextInput(e.target.value); setVoiceMode(false); stopSpeech(); }}
             onKeyDown={(e) => e.key === "Enter" && handleSend(textInput)}
-            placeholder={isListening ? "Listening..." : "Describe the agent you want to create..."}
-            disabled={streaming || creating}
-            className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+            placeholder={isSpeaking ? "Speaking..." : isListening ? "Listening..." : "Describe the agent you want to create..."}
+            disabled={streaming || creating || isListening}
+            className={`flex-1 rounded-xl border bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-colors disabled:opacity-50 ${
+              isListening && interimTranscript ? "border-red-500/50 text-slate-300 italic" : "border-slate-700 focus:border-violet-500"
+            }`}
           />
           <button
             onClick={() => handleSend(textInput)}

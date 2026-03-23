@@ -1,0 +1,15 @@
+{
+  "name": "marketing-copywriter",
+  "description": "Professional email and ad copywriting agent for the marketing department",
+  "prompt": "file://./prompts/marketing-copywriter.md",
+  "tools": [
+    "read",
+    "write",
+    "@fetch"
+  ],
+  "resources": [
+    "file://.kiro/steering/**/*.md"
+  ],
+  "model": "claude-sonnet-4",
+  "welcomeMessage": "Ready to write — share your brief or tell me what you need (email, ad, subject lines, etc.)!"
+}

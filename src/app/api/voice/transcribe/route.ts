@@ -8,8 +8,13 @@ const client = new TranscribeStreamingClient({
   region: process.env.AWS_REGION || "us-east-1",
 });
 
+// Transcribe works best with ~25ms chunks. At 16kHz 16-bit mono = 800 bytes/chunk.
+// We use 8KB chunks for fewer round-trips while staying well under limits.
+const CHUNK_SIZE = 8192;
+
 export async function POST(req: NextRequest) {
   try {
+    console.log("[voice/transcribe] ✅ TRANSCRIBE REQUEST received");
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
 
@@ -22,10 +27,15 @@ export async function POST(req: NextRequest) {
 
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
 
-    // For streaming, we send the audio as a single chunk
-    // In production, you'd stream from the browser via WebSocket
+    if (audioBuffer.length < 320) {
+      return NextResponse.json({ transcript: "", confidence: 0 });
+    }
+
+    // Stream audio in chunks so Transcribe can process incrementally
     async function* audioStream() {
-      yield { AudioEvent: { AudioChunk: audioBuffer } };
+      for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
+        yield { AudioEvent: { AudioChunk: audioBuffer.subarray(i, i + CHUNK_SIZE) } };
+      }
     }
 
     const command = new StartStreamTranscriptionCommand({
@@ -53,10 +63,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      transcript: transcript.trim(),
-      confidence,
-    });
+    return NextResponse.json({ transcript: transcript.trim(), confidence });
   } catch (e) {
     return NextResponse.json(
       { error: { code: "TRANSCRIPTION_FAILED", message: (e as Error).message } },

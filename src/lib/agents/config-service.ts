@@ -81,7 +81,8 @@ export async function getAgent(
 }
 
 export async function createAgent(
-  req: CreateAgentRequest
+  req: CreateAgentRequest,
+  additionalFiles?: Array<{ path: string; content: string }>
 ): Promise<AgentMeta> {
   await fs.mkdir(AGENTS_DIR, { recursive: true });
 
@@ -99,6 +100,17 @@ export async function createAgent(
 
   // Write the Kiro agent config JSON
   await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+
+  // Write additional files (prompt files, steering files, etc.)
+  if (additionalFiles?.length) {
+    for (const file of additionalFiles) {
+      // Resolve relative to workspace, prevent path traversal
+      const resolved = path.resolve(WORKSPACE_DIR, file.path);
+      if (!resolved.startsWith(path.resolve(WORKSPACE_DIR) + path.sep)) continue;
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, file.content);
+    }
+  }
 
   // Update index (with lock to prevent race conditions)
   return withIndexLock(async () => {

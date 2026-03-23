@@ -15,6 +15,17 @@ export interface ExtractedConfig {
   tools: string[];
   model: string;
   role?: string;
+  // Enhanced fields
+  resources?: (string | Record<string, unknown>)[];
+  hooks?: Record<string, unknown>;
+  allowedTools?: string[];
+  welcomeMessage?: string;
+}
+
+/** Additional file to create alongside the agent config */
+export interface AgentFile {
+  path: string;
+  content: string;
 }
 
 interface BuilderState {
@@ -25,6 +36,8 @@ interface BuilderState {
   pendingConfig: ExtractedConfig | null;
   /** Team configs extracted from LLM */
   pendingTeam: ExtractedConfig[] | null;
+  /** Additional files to create (prompt files, steering, etc.) */
+  pendingFiles: AgentFile[];
   createdAgents: Array<{ id: string; name: string }>;
 
   addMessage: (role: "user" | "assistant", content: string) => void;
@@ -33,6 +46,7 @@ interface BuilderState {
   appendStreamingText: (chunk: string) => void;
   setPendingConfig: (c: ExtractedConfig | null) => void;
   setPendingTeam: (t: ExtractedConfig[] | null) => void;
+  setPendingFiles: (f: AgentFile[]) => void;
   addCreatedAgent: (a: { id: string; name: string }) => void;
   reset: () => void;
 }
@@ -44,7 +58,7 @@ const VALID_TOOLS = new Set(["read", "write", "shell", "aws", "@git", "@fetch"])
 const VALID_MODELS = new Set(["claude-sonnet-4", "claude-sonnet-4.5", "claude-haiku-4.5", "claude-opus-4.5", "auto"]);
 
 function sanitizeConfig(c: ExtractedConfig): ExtractedConfig {
-  return {
+  const sanitized: ExtractedConfig = {
     ...c,
     name: c.name?.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 64) || "unnamed-agent",
     description: c.description || "AI agent",
@@ -52,19 +66,27 @@ function sanitizeConfig(c: ExtractedConfig): ExtractedConfig {
     tools: c.tools?.length ? c.tools.filter((t) => VALID_TOOLS.has(t)) : ["read", "write"],
     model: VALID_MODELS.has(c.model) ? c.model : "claude-sonnet-4",
   };
+  // Preserve enhanced fields if present
+  if (c.resources?.length) sanitized.resources = c.resources;
+  if (c.hooks && Object.keys(c.hooks).length) sanitized.hooks = c.hooks;
+  if (c.allowedTools?.length) sanitized.allowedTools = c.allowedTools;
+  if (c.welcomeMessage) sanitized.welcomeMessage = c.welcomeMessage;
+  return sanitized;
 }
 
 /**
- * Parse <agent_config> or <team_config> tags from LLM text.
+ * Parse <agent_config>, <team_config>, and <agent_files> tags from LLM text.
  * Sanitizes extracted configs to only use valid tool/model values.
  */
 export function parseConfigFromResponse(text: string): {
   displayText: string;
   config: ExtractedConfig | null;
   team: ExtractedConfig[] | null;
+  files: AgentFile[];
 } {
   let config: ExtractedConfig | null = null;
   let team: ExtractedConfig[] | null = null;
+  let files: AgentFile[] = [];
   let displayText = text;
 
   const singleMatch = text.match(/<agent_config>([\s\S]*?)<\/agent_config>/);
@@ -84,7 +106,15 @@ export function parseConfigFromResponse(text: string): {
     } catch { /* ignore parse errors */ }
   }
 
-  return { displayText, config, team };
+  const filesMatch = text.match(/<agent_files>([\s\S]*?)<\/agent_files>/);
+  if (filesMatch) {
+    try {
+      files = JSON.parse(filesMatch[1].trim()) as AgentFile[];
+      displayText = displayText.replace(/<agent_files>[\s\S]*?<\/agent_files>/, "").trim();
+    } catch { /* ignore parse errors */ }
+  }
+
+  return { displayText, config, team, files };
 }
 
 export const useBuilderStore = create<BuilderState>((set) => ({
@@ -93,6 +123,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
   streamingText: "",
   pendingConfig: null,
   pendingTeam: null,
+  pendingFiles: [],
   createdAgents: [],
 
   addMessage: (role, content) =>
@@ -104,6 +135,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
   appendStreamingText: (chunk) => set((s) => ({ streamingText: s.streamingText + chunk })),
   setPendingConfig: (c) => set({ pendingConfig: c }),
   setPendingTeam: (t) => set({ pendingTeam: t }),
+  setPendingFiles: (f) => set({ pendingFiles: f }),
   addCreatedAgent: (a) => set((s) => ({ createdAgents: [...s.createdAgents, a] })),
   reset: () =>
     set({
@@ -112,6 +144,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       streamingText: "",
       pendingConfig: null,
       pendingTeam: null,
+      pendingFiles: [],
       createdAgents: [],
     }),
 }));
