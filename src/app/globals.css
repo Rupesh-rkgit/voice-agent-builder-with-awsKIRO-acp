@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #06060b;
+  --background: #1a1b23;
   --foreground: #f1f5f9;
-  --card: #0d1117;
-  --card-border: #1e293b;
+  --card: #22232e;
+  --card-border: #2e3040;
   --muted: #94a3b8;
   --accent: #8b5cf6;
   --accent-hover: #7c3aed;
@@ -30,10 +30,10 @@ body::before {
 
 /* ─── Header ─── */
 .nav-header {
-  background: rgba(6, 6, 11, 0.85);
+  background: rgba(26, 27, 35, 0.9);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .nav-glow-line {
@@ -58,7 +58,7 @@ body::before {
   position: relative;
 }
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* ─── Buttons ─── */
@@ -82,23 +82,23 @@ body::before {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.05);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* ─── Scrollbar ─── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #334155; }
+::-webkit-scrollbar-thumb { background: #2e3040; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3d3f52; }
 
 /* ─── Voice pulse ─── */
 @keyframes voice-pulse {

@@ -81,10 +81,10 @@ export default function AgentConfigEditor({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           spellCheck={false}
-          className="mt-4 w-full rounded-xl bg-black/30 p-4 text-sm text-slate-300 font-mono ring-1 ring-white/[0.06] outline-none focus:ring-violet-500/30 resize-y min-h-[300px] transition-all"
+          className="mt-4 w-full rounded-xl bg-black/20 p-4 text-sm text-slate-300 font-mono ring-1 ring-white/[0.08] outline-none focus:ring-violet-500/30 resize-y min-h-[300px] transition-all"
         />
       ) : (
-        <pre className="mt-4 overflow-x-auto rounded-xl bg-black/30 p-4 text-sm text-slate-300 font-mono ring-1 ring-white/[0.04]">
+        <pre className="mt-4 overflow-x-auto rounded-xl bg-black/20 p-4 text-sm text-slate-300 font-mono ring-1 ring-white/[0.08]">
           {JSON.stringify(config, null, 2)}
         </pre>
       )}
