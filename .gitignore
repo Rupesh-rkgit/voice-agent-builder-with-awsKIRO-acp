@@ -49,6 +49,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# svg and markdown files
+*.svg
+*.md
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

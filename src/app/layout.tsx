@@ -95,7 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-white/[0.04] bg-[#06060b]">
+        <footer className="border-t border-white/[0.06] bg-[#161720]">
           <div className="flex h-12 items-center justify-between px-6">
             <div className="flex items-center gap-4">
               <span className="text-[11px] text-slate-600 font-medium">Voice Agent Studio</span>

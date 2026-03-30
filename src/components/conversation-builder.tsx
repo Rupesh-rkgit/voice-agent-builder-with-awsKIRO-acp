@@ -285,14 +285,14 @@ export default function ConversationBuilder() {
       if (part.startsWith("**") && part.endsWith("**"))
         return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
       if (part.startsWith("`") && part.endsWith("`"))
-        return <code key={i} className="rounded bg-slate-900 px-1.5 py-0.5 text-xs text-emerald-400">{part.slice(1, -1)}</code>;
+        return <code key={i} className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-emerald-400">{part.slice(1, -1)}</code>;
       return part;
     });
   }
 
   function renderConfigCard(config: ExtractedConfig) {
     return (
-      <div className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-mono">
+      <div className="mt-3 rounded-lg border border-slate-600 bg-slate-800 p-3 text-xs font-mono">
         <div className="space-y-1 text-slate-300">
           <div><span className="text-slate-500">name:</span> {config.name}</div>
           <div><span className="text-slate-500">description:</span> {config.description}</div>
@@ -350,7 +350,7 @@ export default function ConversationBuilder() {
             <div className="max-w-[85%]">
               {renderConfigCard(pendingConfig)}
               {pendingFiles.length > 0 && (
-                <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-mono">
+                <div className="mt-2 rounded-lg border border-slate-600 bg-slate-800 p-3 text-xs font-mono">
                   <div className="text-slate-500 mb-1">📁 Additional files:</div>
                   {pendingFiles.map((f, i) => (
                     <div key={i} className="text-emerald-400 truncate">{f.path}</div>
